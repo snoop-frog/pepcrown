@@ -88,6 +88,7 @@
       box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
       max-width: 100%;
       max-height: 70vh;
+      cursor: pointer; /* Show pointer cursor on the editor area */
     }
     
     .editor img.base {
@@ -108,6 +109,11 @@
       cursor: move;
       user-select: none;
       filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
+    }
+    
+    .overlay.follow-cursor {
+      pointer-events: none; /* Allow clicks to pass through when following cursor */
+      cursor: none;
     }
     
     .control-group {
@@ -269,6 +275,59 @@
       color: var(--text-secondary);
       padding: 10px;
     }
+
+    /* Toggle button for placement mode */
+    .placement-mode-toggle {
+      display: flex;
+      align-items: center;
+      margin: 10px 0;
+    }
+    
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 50px;
+      height: 24px;
+      margin-right: 10px;
+    }
+    
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #444;
+      transition: .4s;
+      border-radius: 24px;
+    }
+    
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 4px;
+      bottom: 4px;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .slider {
+      background-color: var(--primary);
+    }
+    
+    input:checked + .slider:before {
+      transform: translateX(26px);
+    }
     
     /* Responsive */
     @media (max-width: 768px) {
@@ -322,6 +381,14 @@
             <img src="https://i.imgur.com/a5srfjG.png" alt="Crown 3">
           </div>
         </div>
+        
+        <div class="placement-mode-toggle">
+          <label class="toggle-switch">
+            <input type="checkbox" id="placementModeToggle">
+            <span class="slider"></span>
+          </label>
+          <span>Click-to-Place Mode</span>
+        </div>
       </div>
       
       <div class="control-group">
@@ -360,12 +427,15 @@
   const baseImage = document.getElementById('baseImage');
   const editor = document.getElementById('editor');
   const statusMessage = document.getElementById('statusMessage');
+  const placementModeToggle = document.getElementById('placementModeToggle');
   
   // State variables
   let isDragging = false;
   let offsetX = 0, offsetY = 0;
   let isFlippedH = false;
   let isFlippedV = false;
+  let isPlacementMode = false;
+  let isFollowingCursor = false;
   
   // Default placeholder image
   window.addEventListener('load', () => {
@@ -379,23 +449,108 @@
     }
   });
   
+  // Toggle placement mode
+  placementModeToggle.addEventListener('change', () => {
+    isPlacementMode = placementModeToggle.checked;
+    
+    if (isPlacementMode) {
+      showStatus('Click-to-Place mode activated. Click anywhere to place the crown.', 'success');
+      // Start following cursor when mode is activated
+      if (!isFollowingCursor) {
+        startFollowCursor();
+      }
+    } else {
+      showStatus('Normal drag mode activated', 'success');
+      if (isFollowingCursor) {
+        stopFollowCursor();
+      }
+    }
+  });
+  
+  // Start following cursor
+  function startFollowCursor() {
+    isFollowingCursor = true;
+    overlay.classList.add('follow-cursor');
+    editor.style.cursor = 'crosshair';
+    
+    // Add mousemove event for the editor
+    editor.addEventListener('mousemove', followCursor);
+  }
+  
+  // Stop following cursor
+  function stopFollowCursor() {
+    isFollowingCursor = false;
+    overlay.classList.remove('follow-cursor');
+    editor.style.cursor = 'pointer';
+    
+    // Remove mousemove event
+    editor.removeEventListener('mousemove', followCursor);
+  }
+  
+  // Follow cursor function
+  function followCursor(e) {
+    if (isFollowingCursor) {
+      const editorRect = editor.getBoundingClientRect();
+      const x = e.clientX - editorRect.left - (overlay.offsetWidth / 2);
+      const y = e.clientY - editorRect.top - (overlay.offsetHeight / 2);
+      
+      overlay.style.left = `${x}px`;
+      overlay.style.top = `${y}px`;
+    }
+  }
+  
+  // Editor click handler
+  editor.addEventListener('click', (e) => {
+    if (isPlacementMode) {
+      if (isFollowingCursor) {
+        // Place the crown where clicked
+        const editorRect = editor.getBoundingClientRect();
+        const x = e.clientX - editorRect.left - (overlay.offsetWidth / 2);
+        const y = e.clientY - editorRect.top - (overlay.offsetHeight / 2);
+        
+        overlay.style.left = `${x}px`;
+        overlay.style.top = `${y}px`;
+        
+        // Stop following cursor
+        stopFollowCursor();
+        showStatus('Crown placed! Toggle the mode again to move it.', 'success');
+      } else {
+        // Start following cursor again
+        startFollowCursor();
+        showStatus('Crown following cursor. Click to place.', 'success');
+      }
+    }
+  });
+  
   // Drag logic with touch support
-  overlay.addEventListener('mousedown', startDrag);
+  overlay.addEventListener('mousedown', (e) => {
+    if (!isPlacementMode) {
+      startDrag(e);
+    }
+  });
+  
   overlay.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    const touch = e.touches[0];
-    const rect = overlay.getBoundingClientRect();
-    offsetX = touch.clientX - rect.left;
-    offsetY = touch.clientY - rect.top;
-    isDragging = true;
+    if (!isPlacementMode) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = overlay.getBoundingClientRect();
+      offsetX = touch.clientX - rect.left;
+      offsetY = touch.clientY - rect.top;
+      isDragging = true;
+    }
   });
   
   document.addEventListener('mouseup', stopDrag);
   document.addEventListener('touchend', stopDrag);
   
-  document.addEventListener('mousemove', dragMove);
+  document.addEventListener('mousemove', (e) => {
+    if (!isPlacementMode && isDragging) {
+      dragMove(e);
+    }
+  });
+  
   document.addEventListener('touchmove', (e) => {
-    if (isDragging) {
+    if (!isPlacementMode && isDragging) {
       e.preventDefault();
       const touch = e.touches[0];
       const editorRect = editor.getBoundingClientRect();
@@ -552,6 +707,12 @@
     isFlippedH = false;
     isFlippedV = false;
     updateTransform();
+    
+    // If in placement mode, start following cursor
+    if (isPlacementMode && !isFollowingCursor) {
+      startFollowCursor();
+    }
+    
     showStatus('Overlay reset to default position and settings', 'success');
   }
   
@@ -564,6 +725,12 @@
     
     overlay.style.left = `${(editorWidth - overlayWidth) / 2}px`;
     overlay.style.top = `${(editorHeight - overlayHeight) / 2}px`;
+    
+    // If in placement mode, stop following cursor
+    if (isPlacementMode && isFollowingCursor) {
+      stopFollowCursor();
+    }
+    
     showStatus('Overlay centered', 'success');
   }
   
@@ -604,6 +771,9 @@
     statusMessage.textContent = message;
     statusMessage.className = 'status-message';
     statusMessage.classList.add(type);
+    
+    // Reset opacity
+    statusMessage.style.opacity = '1';
     
     // Hide after 3 seconds
     setTimeout(() => {
