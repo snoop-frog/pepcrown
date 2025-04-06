@@ -1,144 +1,615 @@
 <!DOCTYPE html>
-<html lang="en"><script src="chrome-extension://dlcobpjiigpikoobohmabehhmhfoodbb/inpage.js" id="argent-x-extension" data-extension-id="dlcobpjiigpikoobohmabehhmhfoodbb"></script><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-
-<title>Interactive Image Overlay</title>
-<style>
-  body, html { height: 100%; margin: 0; font-family: Arial, sans-serif; background-color: black; color: white; }
-  .container { position: relative; width: 50%; margin: 20px auto; }
-  .image-display { position: relative; overflow: hidden; }
-  img { width: 100%; height: auto; display: block; }
-  #overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: transform 0.1s ease; }
-  button, input[type="range"], input[type="file"] { margin-top: 10px; padding: 10px 20px; font-size: 16px; cursor: pointer; display: block; width: 100%; }
-  label { display: block; text-align: center; font-size: 16px; margin-top: 10px; }
-</style>
-<script src="chrome-extension://idnnbdplmphpflfnlkomgpfbpcgelopg/inpage.js" id="xverse-wallet-provider" data-is-priority=""></script></head>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pepodin Editor</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <style>
+    :root {
+      --primary: #6200ea;
+      --primary-light: #7c4dff;
+      --dark: #121212;
+      --dark-surface: #1e1e1e;
+      --text: #ffffff;
+      --text-secondary: #b0b0b0;
+    }
+    
+    body, html {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--dark);
+      color: var(--text);
+      height: 100%;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    
+    header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    h1 {
+      margin: 0;
+      background: linear-gradient(45deg, var(--primary), var(--primary-light));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      font-size: 2rem;
+    }
+    
+    .editor-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      flex: 1;
+    }
+    
+    .editor-area {
+      flex: 1;
+      min-width: 300px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      overflow-x: auto;
+      max-width: 100%;
+    }
+    
+    .controls {
+      flex: 0 0 280px;
+      background: var(--dark-surface);
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    
+    .editor {
+      position: relative;
+      margin: auto;
+      display: inline-block;
+      background-image: linear-gradient(45deg, #333 25%, transparent 25%), 
+                        linear-gradient(-45deg, #333 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #333 75%), 
+                        linear-gradient(-45deg, transparent 75%, #333 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+      border-radius: 4px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      max-width: 100%;
+      max-height: 70vh;
+    }
+    
+    .editor img.base {
+      display: block;
+      max-width: 100%;
+      max-height: 70vh;
+      height: auto;
+      object-fit: contain;
+    }
+    
+    .overlay {
+      position: absolute;
+      top: 50px;
+      left: 50px;
+      width: 128px;
+      height: 128px;
+      transform-origin: center center;
+      cursor: move;
+      user-select: none;
+      filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
+    }
+    
+    .control-group {
+      margin-bottom: 15px;
+    }
+    
+    .control-group h3 {
+      margin: 0 0 10px 0;
+      font-size: 1rem;
+      color: var(--primary-light);
+      border-bottom: 1px solid #444;
+      padding-bottom: 5px;
+    }
+    
+    label {
+      display: block;
+      margin: 8px 0 4px;
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      margin: 5px 0;
+      -webkit-appearance: none;
+      height: 5px;
+      background: #444;
+      border-radius: 5px;
+      outline: none;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      background: var(--primary);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    
+    .file-input {
+      width: 100%;
+      position: relative;
+      margin: 10px 0;
+    }
+    
+    .file-input label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--primary);
+      color: white;
+      padding: 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+      text-align: center;
+    }
+    
+    .file-input:hover label {
+      background: var(--primary-light);
+    }
+    
+    .file-input input[type="file"] {
+      position: absolute;
+      width: 0.1px;
+      height: 0.1px;
+      opacity: 0;
+      overflow: hidden;
+      z-index: -1;
+    }
+    
+    button {
+      width: 100%;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.3s, transform 0.2s;
+      margin: 5px 0;
+    }
+    
+    button:hover {
+      background: var(--primary-light);
+      transform: translateY(-2px);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    .overlay-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 10px 0;
+    }
+    
+    .overlay-option {
+      width: 60px;
+      height: 60px;
+      border: 2px solid transparent;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .overlay-option:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .overlay-option.active {
+      border-color: var(--primary);
+    }
+    
+    .overlay-option img {
+      max-width: 80%;
+      max-height: 80%;
+    }
+    
+    .status-message {
+      text-align: center;
+      margin: 10px 0;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    
+    .status-message.success {
+      background: rgba(76, 175, 80, 0.2);
+      color: #81c784;
+      opacity: 1;
+    }
+    
+    .feature-controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .feature-controls button {
+      flex: 1;
+      padding: 8px;
+    }
+    
+    footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      padding: 10px;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .editor-container {
+        flex-direction: column;
+      }
+      .controls {
+        width: 100%;
+        flex: none;
+      }
+    }
+  </style>
+</head>
 <body>
-<script src="chrome-extension://ldinpeekobnhjjdofggfgjlcehhmanlj/inpage.js" id="leather-provider"></script><div class="container">
-  <div class="image-display" id="imageContainer"></div>
-  <input type="file" id="upload" accept="image/*" onchange="previewFile()">
-  <label for="scale-slider">Resize Crown:</label>
-  <input type="range" id="scale-slider" min="0.05" max="3" step="0.01" value="1" onchange="updateTransform()">
-  <label for="rotate-slider">Rotate Crown:</label>
-  <input type="range" id="rotate-slider" min="-180" max="180" step="1" value="0" onchange="updateTransform()">
-  <button id="saveBtn" onclick="saveImage()">Save Pepodin</button>
+<div class="container">
+  <header>
+    <h1>Pepodin Editor</h1>
+  </header>
+  
+  <div class="editor-container">
+    <div class="editor-area">
+      <div class="editor" id="editor">
+        <img id="baseImage" class="base" src="" alt="Base image">
+        <img id="overlay" class="overlay" src="https://i.imgur.com/a5srfjG.png" alt="Overlay image">
+      </div>
+      <div id="statusMessage" class="status-message"></div>
+    </div>
+    
+    <div class="controls">
+      <div class="control-group">
+        <h3>Images</h3>
+        <div class="file-input">
+          <label for="upload">Upload Base Image</label>
+          <input type="file" id="upload" accept="image/*">
+        </div>
+        
+        <div class="file-input">
+          <label for="uploadOverlay">Upload Custom Overlay</label>
+          <input type="file" id="uploadOverlay" accept="image/*">
+        </div>
+        
+        <label>Choose Overlay:</label>
+        <div class="overlay-picker" id="overlayPicker">
+          <div class="overlay-option active" data-src="https://i.imgur.com/a5srfjG.png">
+            <img src="https://i.imgur.com/a5srfjG.png" alt="Crown">
+          </div>
+          <div class="overlay-option" data-src="https://i.imgur.com/a5srfjG.png">
+            <img src="https://i.imgur.com/a5srfjG.png" alt="Crown 2">
+          </div>
+          <div class="overlay-option" data-src="https://i.imgur.com/a5srfjG.png">
+            <img src="https://i.imgur.com/a5srfjG.png" alt="Crown 3">
+          </div>
+        </div>
+      </div>
+      
+      <div class="control-group">
+        <h3>Adjustments</h3>
+        <label>Size: <span id="scaleValue">100%</span></label>
+        <input type="range" id="scaleSlider" min="0.05" max="3" step="0.01" value="1">
+        
+        <label>Rotation: <span id="rotateValue">0°</span></label>
+        <input type="range" id="rotateSlider" min="-180" max="180" step="1" value="0">
+        
+        <label>Opacity: <span id="opacityValue">100%</span></label>
+        <input type="range" id="opacitySlider" min="0" max="1" step="0.01" value="1">
+      </div>
+      
+      <div class="control-group">
+        <h3>Actions</h3>
+        <button onclick="resetOverlay()">Reset Position</button>
+        <button onclick="centerOverlay()">Center Overlay</button>
+        <div class="feature-controls">
+          <button onclick="flipHorizontal()">Flip H</button>
+          <button onclick="flipVertical()">Flip V</button>
+        </div>
+        <button onclick="saveImage()">Save Image</button>
+      </div>
+    </div>
+  </div>
+  
+  <footer>
+    Pepodin Editor
+  </footer>
 </div>
 
 <script>
-  let scale = 1, angle = 0;
-
-function previewFile() {
-    const file = document.querySelector('input[type=file]').files[0];
-    const reader = new FileReader();
-    reader.addEventListener("load", function () {
-        const uploadedImage = new Image();
-        uploadedImage.src = reader.result;
-        uploadedImage.onload = function () {
-            const imageContainer = document.getElementById('imageContainer');
-            imageContainer.style.position = 'relative';
-            imageContainer.innerHTML = `<img src="${reader.result}" alt="Uploaded Image" style="width: 512px; height: 512px;"/>`; // Set preview image size to 512x512
-            const overlay = document.createElement('img');
-            overlay.id = 'overlay';
-            overlay.crossOrigin = "anonymous";
-            overlay.src = 'https://i.imgur.com/a5srfjG.png';
-            overlay.style.width = '512px'; // Set overlay size to 512x512
-            overlay.style.height = '512px';
-            overlay.onload = function () {
-                imageContainer.appendChild(overlay);
-                initDrag(overlay);
-            };
-        };
-    }, false);
-
-    if (file) {
-        reader.readAsDataURL(file);
+  // Elements
+  const overlay = document.getElementById('overlay');
+  const baseImage = document.getElementById('baseImage');
+  const editor = document.getElementById('editor');
+  const statusMessage = document.getElementById('statusMessage');
+  
+  // State variables
+  let isDragging = false;
+  let offsetX = 0, offsetY = 0;
+  let isFlippedH = false;
+  let isFlippedV = false;
+  
+  // Default placeholder image
+  window.addEventListener('load', () => {
+    if (!baseImage.src || baseImage.src === window.location.href) {
+      baseImage.src = 'https://i.imgur.com/KwDw0s9.jpg'; // Placeholder image
+      setTimeout(() => {
+        // Set to a reasonable default size
+        editor.style.width = '500px';
+        editor.style.height = 'auto';
+      }, 100);
     }
-}
-
-function initDrag(elmnt) {
-  var pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
-  elmnt.onmousedown = elmnt.ontouchstart = dragMouseDown;
-
-  function dragMouseDown(e) {
+  });
+  
+  // Drag logic with touch support
+  overlay.addEventListener('mousedown', startDrag);
+  overlay.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if (e.type === "touchstart") {
-      pos3 = e.touches[0].clientX;
-      pos4 = e.touches[0].clientY;
-    } else {
-      pos3 = e.clientX;
-      pos4 = e.clientY;
+    const touch = e.touches[0];
+    const rect = overlay.getBoundingClientRect();
+    offsetX = touch.clientX - rect.left;
+    offsetY = touch.clientY - rect.top;
+    isDragging = true;
+  });
+  
+  document.addEventListener('mouseup', stopDrag);
+  document.addEventListener('touchend', stopDrag);
+  
+  document.addEventListener('mousemove', dragMove);
+  document.addEventListener('touchmove', (e) => {
+    if (isDragging) {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const editorRect = editor.getBoundingClientRect();
+      const x = touch.clientX - editorRect.left - offsetX;
+      const y = touch.clientY - editorRect.top - offsetY;
+      moveOverlay(x, y);
     }
-    document.onmouseup = document.ontouchend = closeDragElement;
-    document.onmousemove = document.ontouchmove = elementDrag;
+  });
+  
+  function startDrag(e) {
+    isDragging = true;
+    const rect = overlay.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
   }
-
-  function elementDrag(e) {
-    if (e.type === "touchmove") {
-      pos1 = pos3 - e.touches[0].clientX;
-      pos2 = pos4 - e.touches[0].clientY;
-      pos3 = e.touches[0].clientX;
-      pos4 = e.touches[0].clientY;
-    } else {
-      pos1 = pos3 - e.clientX;
-      pos2 = pos4 - e.clientY;
-      pos3 = e.clientX;
-      pos4 = e.clientY;
+  
+  function stopDrag() {
+    isDragging = false;
+  }
+  
+  function dragMove(e) {
+    if (isDragging) {
+      const editorRect = editor.getBoundingClientRect();
+      const x = e.clientX - editorRect.left - offsetX;
+      const y = e.clientY - editorRect.top - offsetY;
+      moveOverlay(x, y);
     }
-    elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-    elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
   }
-
-  function closeDragElement() {
-    document.onmouseup = document.ontouchend = null;
-    document.onmousemove = document.ontouchmove = null;
+  
+  function moveOverlay(x, y) {
+    // Keep within boundaries
+    const editorWidth = editor.offsetWidth;
+    const editorHeight = editor.offsetHeight;
+    const overlayWidth = overlay.offsetWidth;
+    const overlayHeight = overlay.offsetHeight;
+    
+    // Allow partial overflow but keep center part visible
+    const minX = -overlayWidth / 2;
+    const maxX = editorWidth - overlayWidth / 2;
+    const minY = -overlayHeight / 2;
+    const maxY = editorHeight - overlayHeight / 2;
+    
+    const boundedX = Math.max(minX, Math.min(maxX, x));
+    const boundedY = Math.max(minY, Math.min(maxY, y));
+    
+    overlay.style.left = `${boundedX}px`;
+    overlay.style.top = `${boundedY}px`;
   }
-}
-
-function updateTransform() {
-  const scaleSlider = document.getElementById('scale-slider');
-  const rotateSlider = document.getElementById('rotate-slider');
-  scale = scaleSlider.value;
-  angle = rotateSlider.value;
-  const overlay = document.getElementById('overlay');
-  overlay.style.transform = `translate(-50%, -50%) scale(${scale}) rotate(${angle}deg)`;
-}
-
-function saveImage() {
-  const imageContainer = document.getElementById('imageContainer');
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  const img = imageContainer.querySelector('img');
-  const overlay = document.getElementById('overlay');
-
-  canvas.width = canvas.height = 512; // Force the canvas to be 512x512
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-  const transform = window.getComputedStyle(overlay).transform;
-  const matrix = transform.match(/^matrix\((.+)\)$/);
-  const scaleFactors = matrix ? matrix[1].split(', ').map(Number) : [1, 0, 0, 1, 0, 0];
-  const scaleX = scaleFactors[0];
-  const scaleY = scaleFactors[3];
-  const offsetX = parseFloat(window.getComputedStyle(overlay).left);
-  const offsetY = parseFloat(window.getComputedStyle(overlay).top);
-
-  ctx.translate(offsetX, offsetY);
-  ctx.scale(scaleX, scaleY);
-  ctx.drawImage(overlay, -overlay.width / 2, -overlay.height / 2);
-
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  const dataURL = canvas.toDataURL('image/png');
-  downloadImage(dataURL, 'composite-image.png');
-}
-
-function downloadImage(dataURL, filename) {
-    const link = document.createElement('a');
-    link.download = filename;
-    link.href = dataURL;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
+  
+  // Upload base image
+  document.getElementById('upload').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    loadImage(file, baseImage, () => {
+      // Don't set explicit dimensions - let CSS handle the scaling
+      // Instead, maintain aspect ratio while staying within viewport
+      const aspectRatio = baseImage.naturalWidth / baseImage.naturalHeight;
+      const maxWidth = Math.min(baseImage.naturalWidth, window.innerWidth * 0.8);
+      const maxHeight = Math.min(baseImage.naturalHeight, window.innerHeight * 0.7);
+      
+      if (aspectRatio > 1) {
+        // Wider than tall
+        const width = Math.min(maxWidth, aspectRatio * maxHeight);
+        editor.style.width = `${width}px`;
+        editor.style.height = `${width / aspectRatio}px`;
+      } else {
+        // Taller than wide
+        const height = Math.min(maxHeight, maxWidth / aspectRatio);
+        editor.style.width = `${height * aspectRatio}px`;
+        editor.style.height = `${height}px`;
+      }
+      
+      centerOverlay();
+      showStatus('Base image loaded successfully!', 'success');
+    });
+  });
+  
+  // Upload custom overlay
+  document.getElementById('uploadOverlay').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    loadImage(file, overlay, () => {
+      // Deselect any active overlay option
+      document.querySelectorAll('.overlay-option').forEach(option => {
+        option.classList.remove('active');
+      });
+      showStatus('Custom overlay loaded successfully!', 'success');
+    });
+  });
+  
+  // Helper function to load images
+  function loadImage(file, imgElement, callback) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      imgElement.onload = callback;
+      imgElement.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  }
+  
+  // Transform controls with value display
+  const scaleSlider = document.getElementById('scaleSlider');
+  const rotateSlider = document.getElementById('rotateSlider');
+  const opacitySlider = document.getElementById('opacitySlider');
+  const scaleValue = document.getElementById('scaleValue');
+  const rotateValue = document.getElementById('rotateValue');
+  const opacityValue = document.getElementById('opacityValue');
+  
+  scaleSlider.addEventListener('input', updateTransform);
+  rotateSlider.addEventListener('input', updateTransform);
+  opacitySlider.addEventListener('input', updateTransform);
+  
+  function updateTransform() {
+    const scale = scaleSlider.value;
+    const rotate = rotateSlider.value;
+    const opacity = opacitySlider.value;
+    
+    // Update display values
+    scaleValue.textContent = `${Math.round(scale * 100)}%`;
+    rotateValue.textContent = `${rotate}°`;
+    opacityValue.textContent = `${Math.round(opacity * 100)}%`;
+    
+    // Apply transform with flipping
+    let transform = `scale(${isFlippedH ? -scale : scale}, ${isFlippedV ? -scale : scale}) rotate(${rotate}deg)`;
+    overlay.style.transform = transform;
+    overlay.style.opacity = opacity;
+  }
+  
+  // Overlay picker
+  document.querySelectorAll('.overlay-option').forEach(option => {
+    option.addEventListener('click', () => {
+      document.querySelectorAll('.overlay-option').forEach(opt => {
+        opt.classList.remove('active');
+      });
+      option.classList.add('active');
+      
+      // Set the selected overlay
+      overlay.src = option.getAttribute('data-src');
+      
+      // Reset transforms when changing overlay
+      isFlippedH = false;
+      isFlippedV = false;
+      updateTransform();
+    });
+  });
+  
+  // Reset overlay position and transform
+  function resetOverlay() {
+    overlay.style.left = '50px';
+    overlay.style.top = '50px';
+    scaleSlider.value = 1;
+    rotateSlider.value = 0;
+    opacitySlider.value = 1;
+    isFlippedH = false;
+    isFlippedV = false;
+    updateTransform();
+    showStatus('Overlay reset to default position and settings', 'success');
+  }
+  
+  // Center overlay
+  function centerOverlay() {
+    const editorWidth = editor.offsetWidth;
+    const editorHeight = editor.offsetHeight;
+    const overlayWidth = overlay.offsetWidth;
+    const overlayHeight = overlay.offsetHeight;
+    
+    overlay.style.left = `${(editorWidth - overlayWidth) / 2}px`;
+    overlay.style.top = `${(editorHeight - overlayHeight) / 2}px`;
+    showStatus('Overlay centered', 'success');
+  }
+  
+  // Flip horizontally
+  function flipHorizontal() {
+    isFlippedH = !isFlippedH;
+    updateTransform();
+    showStatus('Flipped horizontally', 'success');
+  }
+  
+  // Flip vertically
+  function flipVertical() {
+    isFlippedV = !isFlippedV;
+    updateTransform();
+    showStatus('Flipped vertically', 'success');
+  }
+  
+  // Save snapshot
+  function saveImage() {
+    html2canvas(editor, { 
+      backgroundColor: null, 
+      useCORS: true,
+      scale: 2 // Higher quality
+    }).then(canvas => {
+      const link = document.createElement('a');
+      link.download = 'edited_image.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+      showStatus('Image saved successfully!', 'success');
+    }).catch(err => {
+      console.error('Error saving image:', err);
+      showStatus('Error saving image. Try again!', 'error');
+    });
+  }
+  
+  // Show status message
+  function showStatus(message, type) {
+    statusMessage.textContent = message;
+    statusMessage.className = 'status-message';
+    statusMessage.classList.add(type);
+    
+    // Hide after 3 seconds
+    setTimeout(() => {
+      statusMessage.style.opacity = '0';
+    }, 3000);
+  }
 </script>
-
-
-</body></html>
+</body>
+</html>
