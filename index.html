@@ -71,6 +71,8 @@
       border-radius: 8px;
       padding: 15px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      max-height: 80vh;
+      overflow-y: auto;
     }
     
     .editor {
@@ -101,8 +103,6 @@
     
     .overlay {
       position: absolute;
-      top: 50px;
-      left: 50px;
       width: 128px;
       height: 128px;
       transform-origin: center center;
@@ -114,6 +114,10 @@
     .overlay.follow-cursor {
       pointer-events: none; /* Allow clicks to pass through when following cursor */
       cursor: none;
+    }
+    
+    .overlay.selected {
+      outline: 2px dashed var(--primary-light);
     }
     
     .control-group {
@@ -257,6 +261,12 @@
       opacity: 1;
     }
     
+    .status-message.error {
+      background: rgba(244, 67, 54, 0.2);
+      color: #e57373;
+      opacity: 1;
+    }
+    
     .feature-controls {
       display: flex;
       gap: 10px;
@@ -328,6 +338,81 @@
     input:checked + .slider:before {
       transform: translateX(26px);
     }
+
+    /* Layer controls */
+    .layers-panel {
+      margin-bottom: 15px;
+    }
+
+    .layer-item {
+      display: flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 8px;
+      margin: 5px 0;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    
+    .layer-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    
+    .layer-item.active {
+      background: rgba(124, 77, 255, 0.2);
+      border-left: 3px solid var(--primary-light);
+    }
+    
+    .layer-thumbnail {
+      width: 40px;
+      height: 40px;
+      object-fit: contain;
+      margin-right: 8px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+    }
+    
+    .layer-info {
+      flex: 1;
+    }
+    
+    .layer-name {
+      font-size: 0.9rem;
+      margin: 0;
+    }
+    
+    .layer-visibility {
+      margin-left: 5px;
+      opacity: 0.7;
+      transition: opacity 0.3s;
+    }
+    
+    .layer-visibility:hover {
+      opacity: 1;
+    }
+    
+    .layer-actions {
+      display: flex;
+      gap: 5px;
+    }
+    
+    .layer-button {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 4px;
+      margin: 0;
+      transition: color 0.3s;
+      font-size: 1rem;
+      width: auto;
+    }
+    
+    .layer-button:hover {
+      color: var(--text);
+      transform: none;
+    }
     
     /* Responsive */
     @media (max-width: 768px) {
@@ -351,12 +436,20 @@
     <div class="editor-area">
       <div class="editor" id="editor">
         <img id="baseImage" class="base" src="" alt="Base image">
-        <img id="overlay" class="overlay" src="https://i.imgur.com/a5srfjG.png" alt="Overlay image">
+        <!-- Overlays will be added dynamically -->
       </div>
       <div id="statusMessage" class="status-message"></div>
     </div>
     
     <div class="controls">
+      <div class="control-group layers-panel">
+        <h3>Layers</h3>
+        <div id="layersList">
+          <!-- Layers will be added here dynamically -->
+        </div>
+        <button id="addLayerBtn">Add New Layer</button>
+      </div>
+      
       <div class="control-group">
         <h3>Images</h3>
         <div class="file-input">
@@ -391,7 +484,7 @@
         </div>
       </div>
       
-      <div class="control-group">
+      <div class="control-group" id="adjustmentsPanel">
         <h3>Adjustments</h3>
         <label>Size: <span id="scaleValue">100%</span></label>
         <input type="range" id="scaleSlider" min="0.05" max="3" step="0.01" value="1">
@@ -405,8 +498,8 @@
       
       <div class="control-group">
         <h3>Actions</h3>
-        <button onclick="resetOverlay()">Reset Position</button>
-        <button onclick="centerOverlay()">Center Overlay</button>
+        <button onclick="resetSelectedOverlay()">Reset Position</button>
+        <button onclick="centerSelectedOverlay()">Center Overlay</button>
         <div class="feature-controls">
           <button onclick="flipHorizontal()">Flip H</button>
           <button onclick="flipVertical()">Flip V</button>
@@ -423,38 +516,239 @@
 
 <script>
   // Elements
-  const overlay = document.getElementById('overlay');
   const baseImage = document.getElementById('baseImage');
   const editor = document.getElementById('editor');
   const statusMessage = document.getElementById('statusMessage');
   const placementModeToggle = document.getElementById('placementModeToggle');
+  const layersList = document.getElementById('layersList');
+  const addLayerBtn = document.getElementById('addLayerBtn');
+  
+  // Sliders and value displays
+  const scaleSlider = document.getElementById('scaleSlider');
+  const rotateSlider = document.getElementById('rotateSlider');
+  const opacitySlider = document.getElementById('opacitySlider');
+  const scaleValue = document.getElementById('scaleValue');
+  const rotateValue = document.getElementById('rotateValue');
+  const opacityValue = document.getElementById('opacityValue');
   
   // State variables
   let isDragging = false;
   let offsetX = 0, offsetY = 0;
-  let isFlippedH = false;
-  let isFlippedV = false;
   let isPlacementMode = false;
   let isFollowingCursor = false;
+  let selectedOverlayId = null;
+  let nextLayerId = 1;
+  let layers = []; // Will store all our layers
   
   // Default placeholder image
-  window.addEventListener('load', () => {
-    if (!baseImage.src || baseImage.src === window.location.href) {
-      baseImage.src = 'https://i.imgur.com/KwDw0s9.jpg'; // Placeholder image
-      setTimeout(() => {
-        // Set to a reasonable default size
-        editor.style.width = '500px';
-        editor.style.height = 'auto';
-      }, 100);
-    }
+  window.addEventListener('DOMContentLoaded', () => {
+    console.log("DOM Content Loaded");
+    baseImage.src = 'https://i.imgur.com/KwDw0s9.jpg'; // Placeholder image
+    setTimeout(() => {
+      // Set to a reasonable default size
+      editor.style.width = '500px';
+      editor.style.height = 'auto';
+      
+      // Add first layer
+      addNewLayer();
+    }, 100);
   });
+  
+  // Add new layer button
+  addLayerBtn.addEventListener('click', () => {
+    addNewLayer();
+  });
+  
+  // Function to add a new layer
+  function addNewLayer() {
+    const layerId = `overlay-${nextLayerId++}`;
+    const layerData = {
+      id: layerId,
+      name: `Layer ${nextLayerId - 1}`,
+      src: 'https://i.imgur.com/a5srfjG.png', // Default crown
+      visible: true,
+      x: 50,
+      y: 50,
+      scale: 1,
+      rotate: 0,
+      opacity: 1,
+      isFlippedH: false,
+      isFlippedV: false
+    };
+    
+    layers.push(layerData);
+    
+    // Create overlay element
+    const overlay = document.createElement('img');
+    overlay.id = layerId;
+    overlay.className = 'overlay';
+    overlay.src = layerData.src;
+    overlay.alt = `Overlay ${nextLayerId - 1}`;
+    overlay.style.left = `${layerData.x}px`;
+    overlay.style.top = `${layerData.y}px`;
+    overlay.setAttribute('data-layer-id', layerId);
+    editor.appendChild(overlay);
+    
+    // Add mouse event listeners
+    overlay.addEventListener('mousedown', handleOverlayMouseDown);
+    
+    // Create layer item in layers panel
+    createLayerListItem(layerData);
+    
+    // Select the new layer
+    selectOverlay(layerId);
+    
+    showStatus(`New layer "${layerData.name}" added`, 'success');
+  }
+  
+  // Create layer item in the layers panel
+  function createLayerListItem(layerData) {
+    const layerItem = document.createElement('div');
+    layerItem.className = 'layer-item';
+    layerItem.setAttribute('data-layer-id', layerData.id);
+    layerItem.innerHTML = `
+      <img class="layer-thumbnail" src="${layerData.src}" alt="${layerData.name}">
+      <div class="layer-info">
+        <h4 class="layer-name">${layerData.name}</h4>
+      </div>
+      <div class="layer-actions">
+        <button class="layer-button visibility-toggle" title="Toggle Visibility">
+          ${layerData.visible ? '👁️' : '👁️‍🗨️'}
+        </button>
+        <button class="layer-button delete-layer" title="Delete Layer">🗑️</button>
+      </div>
+    `;
+    
+    // Add event listeners
+    layerItem.addEventListener('click', (e) => {
+      // Don't select if clicking buttons
+      if (!e.target.closest('.layer-button')) {
+        selectOverlay(layerData.id);
+      }
+    });
+    
+    // Delete button
+    const deleteBtn = layerItem.querySelector('.delete-layer');
+    deleteBtn.addEventListener('click', () => {
+      deleteLayer(layerData.id);
+    });
+    
+    // Visibility toggle
+    const visibilityBtn = layerItem.querySelector('.visibility-toggle');
+    visibilityBtn.addEventListener('click', () => {
+      toggleLayerVisibility(layerData.id);
+    });
+    
+    layersList.appendChild(layerItem);
+  }
+  
+  // Select an overlay
+  function selectOverlay(overlayId) {
+    // Deselect any previously selected overlay
+    document.querySelectorAll('.overlay').forEach(el => {
+      el.classList.remove('selected');
+    });
+    
+    document.querySelectorAll('.layer-item').forEach(el => {
+      el.classList.remove('active');
+    });
+    
+    // Select the new overlay
+    selectedOverlayId = overlayId;
+    const overlay = document.getElementById(overlayId);
+    if (overlay) {
+      overlay.classList.add('selected');
+      
+      // Highlight the corresponding layer item
+      const layerItem = document.querySelector(`.layer-item[data-layer-id="${overlayId}"]`);
+      if (layerItem) {
+        layerItem.classList.add('active');
+      }
+      
+      // Update the adjustment controls to match this layer
+      const layerData = getLayerData(overlayId);
+      if (layerData) {
+        scaleSlider.value = layerData.scale;
+        rotateSlider.value = layerData.rotate;
+        opacitySlider.value = layerData.opacity;
+        updateTransformUI();
+      }
+    }
+  }
+  
+  // Delete a layer
+  function deleteLayer(layerId) {
+    // Confirm deletion if it's the only layer
+    if (layers.length === 1) {
+      if (!confirm("Do you want to delete the only layer? You'll need to create a new one.")) {
+        return;
+      }
+    }
+    
+    // Remove from DOM
+    const overlay = document.getElementById(layerId);
+    if (overlay) {
+      overlay.remove();
+    }
+    
+    // Remove from layers list UI
+    const layerItem = document.querySelector(`.layer-item[data-layer-id="${layerId}"]`);
+    if (layerItem) {
+      layerItem.remove();
+    }
+    
+    // Remove from data
+    layers = layers.filter(layer => layer.id !== layerId);
+    
+    // If we deleted the selected layer, select another one if available
+    if (selectedOverlayId === layerId) {
+      selectedOverlayId = null;
+      if (layers.length > 0) {
+        selectOverlay(layers[0].id);
+      }
+    }
+    
+    showStatus('Layer deleted', 'success');
+  }
+  
+  // Toggle layer visibility
+  function toggleLayerVisibility(layerId) {
+    const layerData = getLayerData(layerId);
+    if (layerData) {
+      layerData.visible = !layerData.visible;
+      
+      // Update DOM
+      const overlay = document.getElementById(layerId);
+      if (overlay) {
+        overlay.style.display = layerData.visible ? 'block' : 'none';
+      }
+      
+      // Update visibility button
+      const visibilityBtn = document.querySelector(`.layer-item[data-layer-id="${layerId}"] .visibility-toggle`);
+      if (visibilityBtn) {
+        visibilityBtn.innerHTML = layerData.visible ? '👁️' : '👁️‍🗨️';
+      }
+      
+      showStatus(`Layer ${layerData.visible ? 'shown' : 'hidden'}`, 'success');
+    }
+  }
+  
+  // Get layer data by ID
+  function getLayerData(layerId) {
+    return layers.find(layer => layer.id === layerId);
+  }
+  
+  // Function to get the selected overlay element
+  function getSelectedOverlay() {
+    return selectedOverlayId ? document.getElementById(selectedOverlayId) : null;
+  }
   
   // Toggle placement mode
   placementModeToggle.addEventListener('change', () => {
     isPlacementMode = placementModeToggle.checked;
     
     if (isPlacementMode) {
-      showStatus('Click-to-Place mode activated. Click anywhere to place the crown.', 'success');
+      showStatus('Click-to-Place mode activated. Click anywhere to place the overlay.', 'success');
       // Start following cursor when mode is activated
       if (!isFollowingCursor) {
         startFollowCursor();
@@ -469,18 +763,27 @@
   
   // Start following cursor
   function startFollowCursor() {
-    isFollowingCursor = true;
-    overlay.classList.add('follow-cursor');
-    editor.style.cursor = 'crosshair';
+    if (!selectedOverlayId) return;
     
-    // Add mousemove event for the editor
-    editor.addEventListener('mousemove', followCursor);
+    isFollowingCursor = true;
+    const overlay = getSelectedOverlay();
+    if (overlay) {
+      overlay.classList.add('follow-cursor');
+      editor.style.cursor = 'crosshair';
+      
+      // Add mousemove event for the editor
+      editor.addEventListener('mousemove', followCursor);
+    }
   }
   
   // Stop following cursor
   function stopFollowCursor() {
     isFollowingCursor = false;
-    overlay.classList.remove('follow-cursor');
+    
+    document.querySelectorAll('.overlay').forEach(overlay => {
+      overlay.classList.remove('follow-cursor');
+    });
+    
     editor.style.cursor = 'pointer';
     
     // Remove mousemove event
@@ -489,21 +792,9 @@
   
   // Follow cursor function
   function followCursor(e) {
-    if (isFollowingCursor) {
-      const editorRect = editor.getBoundingClientRect();
-      const x = e.clientX - editorRect.left - (overlay.offsetWidth / 2);
-      const y = e.clientY - editorRect.top - (overlay.offsetHeight / 2);
-      
-      overlay.style.left = `${x}px`;
-      overlay.style.top = `${y}px`;
-    }
-  }
-  
-  // Editor click handler
-  editor.addEventListener('click', (e) => {
-    if (isPlacementMode) {
-      if (isFollowingCursor) {
-        // Place the crown where clicked
+    if (isFollowingCursor && selectedOverlayId) {
+      const overlay = getSelectedOverlay();
+      if (overlay) {
         const editorRect = editor.getBoundingClientRect();
         const x = e.clientX - editorRect.left - (overlay.offsetWidth / 2);
         const y = e.clientY - editorRect.top - (overlay.offsetHeight / 2);
@@ -511,76 +802,102 @@
         overlay.style.left = `${x}px`;
         overlay.style.top = `${y}px`;
         
-        // Stop following cursor
-        stopFollowCursor();
-        showStatus('Crown placed! Toggle the mode again to move it.', 'success');
+        // Update layer data
+        const layerData = getLayerData(selectedOverlayId);
+        if (layerData) {
+          layerData.x = x;
+          layerData.y = y;
+        }
+      }
+    }
+  }
+  
+  // Editor click handler
+  editor.addEventListener('click', (e) => {
+    // Ignore clicks on overlays in placement mode
+    if (e.target.classList.contains('overlay')) {
+      return;
+    }
+    
+    if (isPlacementMode && selectedOverlayId) {
+      if (isFollowingCursor) {
+        // Place the overlay where clicked
+        const overlay = getSelectedOverlay();
+        if (overlay) {
+          const editorRect = editor.getBoundingClientRect();
+          const x = e.clientX - editorRect.left - (overlay.offsetWidth / 2);
+          const y = e.clientY - editorRect.top - (overlay.offsetHeight / 2);
+          
+          overlay.style.left = `${x}px`;
+          overlay.style.top = `${y}px`;
+          
+          // Update layer data
+          const layerData = getLayerData(selectedOverlayId);
+          if (layerData) {
+            layerData.x = x;
+            layerData.y = y;
+          }
+          
+          // Stop following cursor
+          stopFollowCursor();
+          showStatus('Overlay placed! Toggle the mode again to move it.', 'success');
+        }
       } else {
         // Start following cursor again
         startFollowCursor();
-        showStatus('Crown following cursor. Click to place.', 'success');
+        showStatus('Overlay following cursor. Click to place.', 'success');
       }
     }
   });
   
-  // Drag logic with touch support
-  overlay.addEventListener('mousedown', (e) => {
+  // Handle overlay mousedown
+  function handleOverlayMouseDown(e) {
+    // Select this overlay when clicked
+    const overlayId = e.target.getAttribute('data-layer-id');
+    selectOverlay(overlayId);
+    
     if (!isPlacementMode) {
       startDrag(e);
     }
-  });
+    
+    // Prevent event from propagating to editor
+    e.stopPropagation();
+  }
   
-  overlay.addEventListener('touchstart', (e) => {
-    if (!isPlacementMode) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const rect = overlay.getBoundingClientRect();
-      offsetX = touch.clientX - rect.left;
-      offsetY = touch.clientY - rect.top;
-      isDragging = true;
-    }
-  });
-  
-  document.addEventListener('mouseup', stopDrag);
-  document.addEventListener('touchend', stopDrag);
-  
-  document.addEventListener('mousemove', (e) => {
-    if (!isPlacementMode && isDragging) {
-      dragMove(e);
-    }
-  });
-  
-  document.addEventListener('touchmove', (e) => {
-    if (!isPlacementMode && isDragging) {
-      e.preventDefault();
-      const touch = e.touches[0];
-      const editorRect = editor.getBoundingClientRect();
-      const x = touch.clientX - editorRect.left - offsetX;
-      const y = touch.clientY - editorRect.top - offsetY;
-      moveOverlay(x, y);
-    }
-  });
-  
+  // Drag logic
   function startDrag(e) {
+    const overlay = getSelectedOverlay();
+    if (!overlay) return;
+    
     isDragging = true;
     const rect = overlay.getBoundingClientRect();
     offsetX = e.clientX - rect.left;
     offsetY = e.clientY - rect.top;
+    
+    // Add event listeners to document
+    document.addEventListener('mousemove', dragMove);
+    document.addEventListener('mouseup', stopDrag);
   }
   
   function stopDrag() {
     isDragging = false;
+    document.removeEventListener('mousemove', dragMove);
+    document.removeEventListener('mouseup', stopDrag);
   }
   
   function dragMove(e) {
-    if (isDragging) {
-      const editorRect = editor.getBoundingClientRect();
-      const x = e.clientX - editorRect.left - offsetX;
-      const y = e.clientY - editorRect.top - offsetY;
-      moveOverlay(x, y);
+    if (isDragging && selectedOverlayId) {
+      const overlay = getSelectedOverlay();
+      if (overlay) {
+        const editorRect = editor.getBoundingClientRect();
+        const x = e.clientX - editorRect.left - offsetX;
+        const y = e.clientY - editorRect.top - offsetY;
+        moveOverlay(overlay, x, y);
+      }
     }
   }
   
-  function moveOverlay(x, y) {
+  function moveOverlay(overlay, x, y) {
     // Keep within boundaries
     const editorWidth = editor.offsetWidth;
     const editorHeight = editor.offsetHeight;
@@ -598,114 +915,303 @@
     
     overlay.style.left = `${boundedX}px`;
     overlay.style.top = `${boundedY}px`;
+    
+    // Update layer data
+    const layerData = getLayerData(selectedOverlayId);
+    if (layerData) {
+      layerData.x = boundedX;
+      layerData.y = boundedY;
+    }
   }
   
-  // Upload base image
-  document.getElementById('upload').addEventListener('change', (e) => {
+  // Upload base image with improved error handling
+  document.getElementById('upload').addEventListener('change', function(e) {
+    console.log("Base image upload triggered");
+    showStatus("Processing image...", "success");
+    
+    // Check if files exist
+    if (!e.target.files || e.target.files.length === 0) {
+      console.error("No files selected");
+      showStatus("No files selected", "error");
+      return;
+    }
+    
     const file = e.target.files[0];
-    if (!file) return;
-    loadImage(file, baseImage, () => {
-      // Don't set explicit dimensions - let CSS handle the scaling
-      // Instead, maintain aspect ratio while staying within viewport
-      const aspectRatio = baseImage.naturalWidth / baseImage.naturalHeight;
-      const maxWidth = Math.min(baseImage.naturalWidth, window.innerWidth * 0.8);
-      const maxHeight = Math.min(baseImage.naturalHeight, window.innerHeight * 0.7);
-      
-      if (aspectRatio > 1) {
-        // Wider than tall
-        const width = Math.min(maxWidth, aspectRatio * maxHeight);
-        editor.style.width = `${width}px`;
-        editor.style.height = `${width / aspectRatio}px`;
-      } else {
-        // Taller than wide
-        const height = Math.min(maxHeight, maxWidth / aspectRatio);
-        editor.style.width = `${height * aspectRatio}px`;
-        editor.style.height = `${height}px`;
-      }
-      
-      centerOverlay();
-      showStatus('Base image loaded successfully!', 'success');
-    });
-  });
-  
-  // Upload custom overlay
-  document.getElementById('uploadOverlay').addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    loadImage(file, overlay, () => {
-      // Deselect any active overlay option
-      document.querySelectorAll('.overlay-option').forEach(option => {
-        option.classList.remove('active');
-      });
-      showStatus('Custom overlay loaded successfully!', 'success');
-    });
-  });
-  
-  // Helper function to load images
-  function loadImage(file, imgElement, callback) {
+    console.log("File selected:", file.name, file.type, file.size);
+    
+    // Verify it's an image
+    if (!file.type.startsWith('image/')) {
+      console.error("Not an image file");
+      showStatus("Please select an image file", "error");
+      return;
+    }
+    
+    // Create a new FileReader
     const reader = new FileReader();
-    reader.onload = () => {
-      imgElement.onload = callback;
-      imgElement.src = reader.result;
+    
+    // Set up what happens on error
+    reader.onerror = function(error) {
+      console.error("Error reading file:", error);
+      showStatus("Error reading image file", "error");
     };
-    reader.readAsDataURL(file);
-  }
-  
-  // Transform controls with value display
-  const scaleSlider = document.getElementById('scaleSlider');
-  const rotateSlider = document.getElementById('rotateSlider');
-  const opacitySlider = document.getElementById('opacitySlider');
-  const scaleValue = document.getElementById('scaleValue');
-  const rotateValue = document.getElementById('rotateValue');
-  const opacityValue = document.getElementById('opacityValue');
-  
-  scaleSlider.addEventListener('input', updateTransform);
-  rotateSlider.addEventListener('input', updateTransform);
-  opacitySlider.addEventListener('input', updateTransform);
-  
-  function updateTransform() {
-    const scale = scaleSlider.value;
-    const rotate = rotateSlider.value;
-    const opacity = opacitySlider.value;
     
-    // Update display values
-    scaleValue.textContent = `${Math.round(scale * 100)}%`;
-    rotateValue.textContent = `${rotate}°`;
-    opacityValue.textContent = `${Math.round(opacity * 100)}%`;
+    // Set up what happens when done
+    reader.onload = function(event) {
+      // Create a new image to get dimensions
+      const img = new Image();
+      
+      // Set up image load handlers
+      img.onload = function() {
+        console.log("Image loaded: " + img.width + "x" + img.height);
+        
+        // Set the base image src
+        baseImage.src = img.src;
+        
+        // Calculate dimensions based on aspect ratio
+        const aspectRatio = img.width / img.height;
+        const maxWidth = Math.min(img.width, window.innerWidth * 0.8);
+        const maxHeight = Math.min(img.height, window.innerHeight * 0.7);
+        
+        if (aspectRatio > 1) {
+          // Wider than tall
+          const width = Math.min(maxWidth, aspectRatio * maxHeight);
+          editor.style.width = `${width}px`;
+          editor.style.height = `${width / aspectRatio}px`;
+        } else {
+          // Taller than wide
+          const height = Math.min(maxHeight, maxWidth / aspectRatio);
+          editor.style.width = `${height * aspectRatio}px`;
+          editor.style.height = `${height}px`;
+        }
+        
+        console.log("Editor resized to:", editor.style.width, editor.style.height);
+        
+        // Center all overlays
+        layers.forEach(layer => {
+          centerLayerOverlay(layer.id);
+        });
+        
+        showStatus('Base image loaded successfully!', 'success');
+      };
+      
+      img.onerror = function() {
+        console.error("Error loading image");
+        showStatus("Error loading image", "error");
+      };
+      
+      // Start loading the image with the data from FileReader
+      img.src = event.target.result;
+    };
     
-    // Apply transform with flipping
-    let transform = `scale(${isFlippedH ? -scale : scale}, ${isFlippedV ? -scale : scale}) rotate(${rotate}deg)`;
-    overlay.style.transform = transform;
-    overlay.style.opacity = opacity;
-  }
+    // Read the file as a data URL
+    try {
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Exception reading file:", error);
+      showStatus("Error reading file", "error");
+    }
+  });
+  
+  // Upload custom overlay for the selected layer
+  document.getElementById('uploadOverlay').addEventListener('change', function(e) {
+    console.log("Custom overlay upload triggered");
+    
+    if (!selectedOverlayId) {
+      showStatus('Please select a layer first', 'error');
+      return;
+    }
+    
+    // Check if files exist
+    if (!e.target.files || e.target.files.length === 0) {
+      console.error("No files selected");
+      showStatus("No files selected", "error");
+      return;
+    }
+    
+    const file = e.target.files[0];
+    console.log("File selected:", file.name, file.type, file.size);
+    
+    // Verify it's an image
+    if (!file.type.startsWith('image/')) {
+      console.error("Not an image file");
+      showStatus("Please select an image file", "error");
+      return;
+    }
+    
+    const overlay = getSelectedOverlay();
+    if (!overlay) {
+      showStatus('Error: Selected overlay not found', 'error');
+      return;
+    }
+    
+    // Create a new FileReader
+    const reader = new FileReader();
+    
+    // Set up what happens on error
+    reader.onerror = function(error) {
+      console.error("Error reading file:", error);
+      showStatus("Error reading image file", "error");
+    };
+    
+    // Set up what happens when done
+    reader.onload = function(event) {
+      // Create a new image to ensure it loads properly
+      const img = new Image();
+      
+      img.onload = function() {
+        // Set the overlay image src
+        overlay.src = img.src;
+        
+        // Update layer data
+        const layerData = getLayerData(selectedOverlayId);
+        if (layerData) {
+          layerData.src = img.src;
+          
+          // Update thumbnail in layers panel
+          const thumbnail = document.querySelector(`.layer-item[data-layer-id="${selectedOverlayId}"] .layer-thumbnail`);
+          if (thumbnail) {
+            thumbnail.src = img.src;
+          }
+        }
+        
+        // Deselect any active overlay option
+        document.querySelectorAll('.overlay-option').forEach(option => {
+          option.classList.remove('active');
+        });
+        
+        showStatus('Custom overlay loaded successfully!', 'success');
+      };
+      
+      img.onerror = function() {
+        console.error("Error loading overlay image");
+        showStatus("Error loading overlay image", "error");
+      };
+      
+      // Start loading the image
+      img.src = event.target.result;
+    };
+    
+    // Read the file as a data URL
+    try {
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Exception reading file:", error);
+      showStatus("Error reading file", "error");
+    }
+  });
   
   // Overlay picker
   document.querySelectorAll('.overlay-option').forEach(option => {
     option.addEventListener('click', () => {
+      if (!selectedOverlayId) {
+        showStatus('Please select a layer first', 'error');
+        return;
+      }
+      
       document.querySelectorAll('.overlay-option').forEach(opt => {
         opt.classList.remove('active');
       });
       option.classList.add('active');
       
       // Set the selected overlay
-      overlay.src = option.getAttribute('data-src');
-      
-      // Reset transforms when changing overlay
-      isFlippedH = false;
-      isFlippedV = false;
-      updateTransform();
+      const overlay = getSelectedOverlay();
+      if (overlay) {
+        const src = option.getAttribute('data-src');
+        overlay.src = src;
+        
+        // Update layer data
+        const layerData = getLayerData(selectedOverlayId);
+        if (layerData) {
+          layerData.src = src;
+          layerData.isFlippedH = false;
+          layerData.isFlippedV = false;
+          
+          // Update thumbnail in layers panel
+          const thumbnail = document.querySelector(`.layer-item[data-layer-id="${selectedOverlayId}"] .layer-thumbnail`);
+          if (thumbnail) {
+            thumbnail.src = src;
+          }
+        }
+        
+        updateTransform();
+      }
     });
   });
   
-  // Reset overlay position and transform
-  function resetOverlay() {
+  // Transform controls event listeners
+  scaleSlider.addEventListener('input', updateTransform);
+  rotateSlider.addEventListener('input', updateTransform);
+  opacitySlider.addEventListener('input', updateTransform);
+  
+  // Update transformation based on sliders
+  function updateTransform() {
+    if (!selectedOverlayId) return;
+    
+    const overlay = getSelectedOverlay();
+    if (!overlay) return;
+    
+    const layerData = getLayerData(selectedOverlayId);
+    if (!layerData) return;
+    
+    const scale = scaleSlider.value;
+    const rotate = rotateSlider.value;
+    const opacity = opacitySlider.value;
+    
+    // Update layer data
+    layerData.scale = scale;
+    layerData.rotate = rotate;
+    layerData.opacity = opacity;
+    
+    // Update display values
+    updateTransformUI();
+    
+    // Apply transform with flipping
+    const transform = `scale(${layerData.isFlippedH ? -scale : scale}, ${layerData.isFlippedV ? -scale : scale}) rotate(${rotate}deg)`;
+    overlay.style.transform = transform;
+    overlay.style.opacity = opacity;
+  }
+  
+  // Update transform UI values
+  function updateTransformUI() {
+    const scale = scaleSlider.value;
+    const rotate = rotateSlider.value;
+    const opacity = opacitySlider.value;
+    
+    scaleValue.textContent = `${Math.round(scale * 100)}%`;
+    rotateValue.textContent = `${rotate}°`;
+    opacityValue.textContent = `${Math.round(opacity * 100)}%`;
+  }
+  
+  // Reset selected overlay position and transform
+  function resetSelectedOverlay() {
+    if (!selectedOverlayId) {
+      showStatus('Please select a layer first', 'error');
+      return;
+    }
+    
+    const overlay = getSelectedOverlay();
+    if (!overlay) return;
+    
+    const layerData = getLayerData(selectedOverlayId);
+    if (!layerData) return;
+    
     overlay.style.left = '50px';
     overlay.style.top = '50px';
+    
+    // Update layer data
+    layerData.x = 50;
+    layerData.y = 50;
+    layerData.scale = 1;
+    layerData.rotate = 0;
+    layerData.opacity = 1;
+    layerData.isFlippedH = false;
+    layerData.isFlippedV = false;
+    
+    // Update sliders
     scaleSlider.value = 1;
     rotateSlider.value = 0;
     opacitySlider.value = 1;
-    isFlippedH = false;
-    isFlippedV = false;
+    
     updateTransform();
     
     // If in placement mode, start following cursor
@@ -716,15 +1222,14 @@
     showStatus('Overlay reset to default position and settings', 'success');
   }
   
-  // Center overlay
-  function centerOverlay() {
-    const editorWidth = editor.offsetWidth;
-    const editorHeight = editor.offsetHeight;
-    const overlayWidth = overlay.offsetWidth;
-    const overlayHeight = overlay.offsetHeight;
+  // Center selected overlay
+  function centerSelectedOverlay() {
+    if (!selectedOverlayId) {
+      showStatus('Please select a layer first', 'error');
+      return;
+    }
     
-    overlay.style.left = `${(editorWidth - overlayWidth) / 2}px`;
-    overlay.style.top = `${(editorHeight - overlayHeight) / 2}px`;
+    centerLayerOverlay(selectedOverlayId);
     
     // If in placement mode, stop following cursor
     if (isPlacementMode && isFollowingCursor) {
@@ -734,22 +1239,64 @@
     showStatus('Overlay centered', 'success');
   }
   
+  // Center a specific layer's overlay
+  function centerLayerOverlay(layerId) {
+    const overlay = document.getElementById(layerId);
+    if (!overlay) return;
+    
+    const layerData = getLayerData(layerId);
+    if (!layerData) return;
+    
+    const editorWidth = editor.offsetWidth;
+    const editorHeight = editor.offsetHeight;
+    const overlayWidth = overlay.offsetWidth;
+    const overlayHeight = overlay.offsetHeight;
+    
+    const x = (editorWidth - overlayWidth) / 2;
+    const y = (editorHeight - overlayHeight) / 2;
+    
+    overlay.style.left = `${x}px`;
+    overlay.style.top = `${y}px`;
+    
+    // Update layer data
+    layerData.x = x;
+    layerData.y = y;
+  }
+  
   // Flip horizontally
   function flipHorizontal() {
-    isFlippedH = !isFlippedH;
+    if (!selectedOverlayId) {
+      showStatus('Please select a layer first', 'error');
+      return;
+    }
+    
+    const layerData = getLayerData(selectedOverlayId);
+    if (!layerData) return;
+    
+    layerData.isFlippedH = !layerData.isFlippedH;
     updateTransform();
     showStatus('Flipped horizontally', 'success');
   }
   
   // Flip vertically
   function flipVertical() {
-    isFlippedV = !isFlippedV;
+    if (!selectedOverlayId) {
+      showStatus('Please select a layer first', 'error');
+      return;
+    }
+    
+    const layerData = getLayerData(selectedOverlayId);
+    if (!layerData) return;
+    
+    layerData.isFlippedV = !layerData.isFlippedV;
     updateTransform();
     showStatus('Flipped vertically', 'success');
   }
   
   // Save snapshot
   function saveImage() {
+    showStatus('Preparing image...', 'success');
+    
     html2canvas(editor, { 
       backgroundColor: null, 
       useCORS: true,
@@ -766,11 +1313,18 @@
     });
   }
   
-  // Show status message
+  // Show status message with improved handling
   function showStatus(message, type) {
+    console.log("Status:", message, type);
+    
+    if (!statusMessage) {
+      console.error("Status message element not found");
+      return;
+    }
+    
     statusMessage.textContent = message;
     statusMessage.className = 'status-message';
-    statusMessage.classList.add(type);
+    statusMessage.classList.add(type || 'success');
     
     // Reset opacity
     statusMessage.style.opacity = '1';
